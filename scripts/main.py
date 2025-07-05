@@ -61,6 +61,7 @@ class DrawingApp:
         self.result_label.pack(pady=10)
         
         self.drawing = False
+        self.drawn_pixels = set()  # Store drawn pixel coordinates
         
     def paint(self, event):
         self.drawing = True
@@ -68,17 +69,27 @@ class DrawingApp:
         x2, y2 = (event.x + 1), (event.y + 1)
         self.canvas.create_oval(x1, y1, x2, y2, fill='black', outline='black')
         
+        # Store the drawn pixels
+        for x in range(max(0, int(x1)), min(280, int(x2) + 1)):
+            for y in range(max(0, int(y1)), min(280, int(y2) + 1)):
+                self.drawn_pixels.add((x, y))
+        
     def clear_canvas(self):
         self.canvas.delete("all")
+        self.drawn_pixels.clear()
         self.result_label.config(text="Draw a digit and click Predict")
         
     def predict(self):
-        # Get canvas content as image
-        ps = self.canvas.postscript(colormode='gray')
-        img = Image.open(io.BytesIO(ps.encode('utf-8')))
+        # Create image from drawn pixels
+        img = Image.new('L', (280, 280), 255)  # White background
         
-        # Convert to grayscale and resize to 28x28
-        img = img.convert('L').resize((28, 28), Image.Resampling.LANCZOS)
+        # Draw the pixels that were drawn on canvas
+        for x, y in self.drawn_pixels:
+            if 0 <= x < 280 and 0 <= y < 280:
+                img.putpixel((x, y), 0)  # Black pixel
+        
+        # Resize to 28x28
+        img = img.resize((28, 28), Image.Resampling.LANCZOS)
         
         # Convert to numpy array and normalize
         img_array = np.array(img)
@@ -144,12 +155,12 @@ def train():
         acc = accuracy_score(val_labels, val_preds)
         print(f"Epoch {epoch+1}/{EPOCHS}, Validation Accuracy: {acc:.4f}")
     # Save model
-    torch.save(model.state_dict(), 'mnist_model.pth')
+    torch.save(model.state_dict(), MODEL_PATH)
 
 def predict():
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model = SimpleNN().to(device)
-    model.load_state_dict(torch.load('mnist_model.pth', map_location=device))
+    model.load_state_dict(torch.load(MODEL_PATH, map_location=device))
     model.eval()
     test_dataset = MNISTDataset(TEST_CSV, train=False)
     test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False)
@@ -169,7 +180,7 @@ def interactive_test():
     """Interactive testing with drawing interface"""
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model = SimpleNN().to(device)
-    model.load_state_dict(torch.load('mnist_model.pth', map_location=device))
+    model.load_state_dict(torch.load(MODEL_PATH, map_location=device))
     
     print("Loading drawing interface...")
     app = DrawingApp(model, device)
